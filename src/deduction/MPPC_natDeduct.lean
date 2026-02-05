@@ -1,4 +1,5 @@
-import deduction.deduction_monadic data.set.basic
+import deduction.deduction_monadic
+import Mathlib.Data.Set.Insert
 open deduction_basic
 
 
@@ -13,12 +14,12 @@ namespace MPPC_defn
     | diamond : MPPC_Form → MPPC_Form
 
 
-    @[reducible] def MPPC_Hyp : Type := set (MPPC_Form)
+    @[reducible] def MPPC_Hyp : Type := Set MPPC_Form
 
-    instance : has_union MPPC_Hyp := infer_instance
-    instance : has_mem MPPC_Form MPPC_Hyp := infer_instance
-    instance : has_insert MPPC_Form MPPC_Hyp := infer_instance
-    instance : has_emptyc MPPC_Hyp := infer_instance
+    instance : Union MPPC_Hyp := inferInstance
+    instance : Membership MPPC_Form MPPC_Hyp := inferInstance
+    instance : Insert MPPC_Form MPPC_Hyp := inferInstance
+    instance : EmptyCollection MPPC_Hyp := inferInstance
 
     inductive isModal : MPPC_Hyp → Prop
     | ModalEmpty : isModal ∅
@@ -47,10 +48,10 @@ namespace MPPC_defn
     | dpure {Φ : MPPC_Hyp} {φ : MPPC_Form}
         : MPPC_derives Φ φ → MPPC_derives Φ (MPPC_Form.diamond φ)
     | djoin {Φ : MPPC_Hyp} {φ : MPPC_Form}
-        : MPPC_derives Φ (MPPC_Form.diamond(MPPC_Form.diamond φ)) → MPPC_derives Φ (MPPC_Form.diamond φ)
+        : MPPC_derives Φ (MPPC_Form.diamond (MPPC_Form.diamond φ)) → MPPC_derives Φ (MPPC_Form.diamond φ)
     open MPPC_derives
 
-notation (name:= MPPC.diamond) `◇`:81 φ := MPPC_Form.diamond φ 
+notation:81 "◇" φ => MPPC_Form.diamond φ
 
 end MPPC_defn
 
@@ -65,74 +66,58 @@ namespace MPPC_has_derives
     open MPPC_defn.MPPC_Form
 
     instance MPPC_hasHyp : has_Hyp MPPC_Form :=
-      { Hyp := MPPC_Hyp }
-
-    instance MPPC_singleton : has_singleton MPPC_Form MPPC_Hyp :=
-      deduction_basic.singleHyp
-    @[simp] 
-    lemma same_singles : ∀ φ : MPPC_Form, 
-        MPPC_has_derives.MPPC_singleton.singleton φ = set.has_singleton.singleton φ :=
-    begin 
-      assume φ,
-      dsimp[MPPC_has_derives.MPPC_singleton,deduction_basic.singleHyp],
-      rw set.is_lawful_singleton.insert_emptyc_eq,
-    end
-
-    lemma single_union {Φ : MPPC_Hyp} {φ : MPPC_Form}
-        : insert φ Φ = {φ} ∪ Φ := by simp
+      { Hyp := MPPC_Hyp
+        emptyHyp := inferInstance
+        insertHyp := inferInstance }
 
 
-    instance MPPC_Der : has_struct_derives MPPC_Form :=
-    {
-      derives := MPPC_derives,
-      derive_Trans := 
-        begin
-          assume Φ ψ θ hφψ hψθ,
-          have helper : MPPC_derives Φ (MPPC_Form.impl ψ θ),
-            apply impl_intro,
-            rw single_union,
-            apply weak,
-            exact hψθ,
-          apply impl_elim ψ,
-          exact helper,
-          exact hφψ,
-        end,
-      inInsert := set.mem_insert,
-      hyp := @hyp,
-      weak1 := 
-        begin
-          assume Φ φ ψ h,
-          rw single_union,
-          rw set.union_comm,
-          apply weak,
-          exact h,
-        end,
-    }
+    instance MPPC_Der : has_struct_derives MPPC_Form where
+      tohas_derives :=
+        { tohas_Hyp := MPPC_hasHyp
+          derives := MPPC_derives
+          derive_Trans := by
+            intro Φ ψ θ hφψ hψθ
+            have helper : MPPC_derives Φ (MPPC_Form.impl ψ θ) := by
+              apply impl_intro
+              have : MPPC_derives (insert ψ (∅ : MPPC_Hyp) ∪ Φ) θ := by
+                apply weak (Φ := insert ψ (∅ : MPPC_Hyp)) (Ψ := Φ)
+                exact hψθ
+              simpa [Set.insert_union, Set.empty_union] using this
+            apply impl_elim ψ
+            · exact helper
+            · exact hφψ }
+      memHyp := (inferInstance : Membership MPPC_Form MPPC_Hyp)
+      inInsert := by
+        intro φ Φ
+        exact Set.mem_insert φ Φ
+      hyp := @hyp
+      weak1 := by
+        intro Φ φ ψ h
+        have : MPPC_derives (Φ ∪ insert ψ (∅ : MPPC_Hyp)) φ := by
+          apply weak (Φ := Φ) (Ψ := insert ψ (∅ : MPPC_Hyp))
+          exact h
+        simpa [Set.union_insert, Set.union_empty] using this
 
     instance MPPC_top : deduction_cart.has_ltop MPPC_Form :=
-    {
-      top := MPPC_Form.top,
-      truth := @truth,
-    }
+    { tohas_struct_derives := MPPC_Der
+      top := MPPC_Form.top
+      truth := @truth }
     instance MPPC_and : deduction_cart.has_and MPPC_Form :=
-    {
-      and := MPPC_Form.and,
-      and_intro := @and_intro,
-      and_eliml := @and_eliml,
-      and_elimr := @and_elimr,
-    }
+    { tohas_ltop := MPPC_top
+      and := MPPC_Form.and
+      and_intro := @and_intro
+      and_eliml := @and_eliml
+      and_elimr := @and_elimr }
     instance MPPC_impl : deduction_cart.has_impl MPPC_Form :=
-    {
-      impl := MPPC_Form.impl,
-      impl_intro := @impl_intro,
-      impl_elim := @impl_elim,
-    }
+    { tohas_and := MPPC_and
+      impl := MPPC_Form.impl
+      impl_intro := @impl_intro
+      impl_elim := @impl_elim }
     instance MPPC_diamond : deduction_monadic.has_diamond MPPC_Form :=
-    {
-      diamond := MPPC_Form.diamond,
-      dmap := @dmap,
-      dpure := @dpure,
-      djoin := @djoin,
-    }
+    { tohas_struct_derives := MPPC_Der
+      diamond := MPPC_Form.diamond
+      dmap := @dmap
+      dpure := @dpure
+      djoin := @djoin }
 
 end MPPC_has_derives
