@@ -1,46 +1,45 @@
-
 namespace deduction_basic
-  class has_Hyp (Form : Type) :=
-    (Hyp : Type)
-    [emptyHyp : has_emptyc Hyp]
-    [insertHyp : has_insert Form Hyp]
-  instance singleHyp {Form : Type} [hasHyp : has_Hyp Form] : has_singleton Form hasHyp.Hyp := 
-    {singleton := λ φ, hasHyp.insertHyp.insert φ hasHyp.emptyHyp.emptyc}
-  
-  instance lawfulSingleHyp {Form : Type} [hasHyp : has_Hyp Form] : 
-  @is_lawful_singleton Form (has_Hyp.Hyp Form) hasHyp.emptyHyp hasHyp.insertHyp deduction_basic.singleHyp := 
-  { insert_emptyc_eq := begin assume φ, refl end }
+  set_option quotPrecheck false
+  universe u v
 
-  class has_derives (Form : Type) extends has_Hyp Form := 
-    (derives : Hyp → Form → Prop)
-    (derive_Trans : ∀ {Φ : Hyp} (ψ) {θ : Form}, derives Φ ψ → derives {ψ} θ → derives Φ θ)
+  class has_Hyp (Form : Type u) where
+    Hyp : Type v
+    [emptyHyp : EmptyCollection Hyp]
+    [insertHyp : Insert Form Hyp]
+  attribute [instance] has_Hyp.emptyHyp has_Hyp.insertHyp
+  instance singleHyp {Form : Type u} [hasHyp : has_Hyp Form] : Singleton Form hasHyp.Hyp :=
+    ⟨fun φ => hasHyp.insertHyp.insert φ hasHyp.emptyHyp.emptyCollection⟩
 
-  def der {Form : Type} [Der : has_derives Form] : Form → Form → Prop :=
-    λ φ ψ, has_derives.derives {φ} ψ
+  instance lawfulSingleHyp {Form : Type u} [hasHyp : has_Hyp Form] :
+    LawfulSingleton Form hasHyp.Hyp :=
+    ⟨by intro φ; rfl⟩
 
-  infix `⊢`:60 := der
+  class has_derives (Form : Type u) extends has_Hyp Form where
+    derives : Hyp → Form → Prop
+    derive_Trans :
+      ∀ {Φ : Hyp} (ψ) {θ : Form},
+        derives Φ ψ → derives (insert ψ (∅ : Hyp)) θ → derives Φ θ
 
-  lemma derive_trans {Form : Type} [Der : has_derives Form] : 
-    ∀ {φ : Form} (ψ) {θ}, (φ ⊢ ψ) → (ψ ⊢ θ) → (φ ⊢ θ) :=
-  begin
-    assume φ,
-    apply Der.derive_Trans,
-  end
+  def der {Form : Type u} [Der : has_derives Form] : Form → Form → Prop :=
+    fun φ ψ => has_derives.derives {φ} ψ
 
-  class has_struct_derives (Form : Type) extends has_derives Form :=
-    [memHyp : has_mem Form Hyp]
-    (inInsert : ∀ {φ : Form} {Φ : Hyp}, φ ∈ insert φ Φ)
-    (hyp : ∀ {Φ} {φ}, (φ ∈ Φ) → derives Φ φ)
-    (weak1 : ∀ {Φ} {φ} (ψ), derives Φ φ → derives (insert ψ Φ) φ)
+  infix:60 " ⊢ " => der
 
-  lemma derive_refl {Form : Type} [Der : has_struct_derives Form] :
-    ∀ φ : Form, φ ⊢ φ :=
-  begin
-    assume φ,
-    apply Der.hyp,
-    apply Der.inInsert,
-  end
-  
+  theorem derive_trans {Form : Type u} [Der : has_derives Form] :
+    ∀ {φ : Form} (ψ) {θ}, (φ ⊢ ψ) → (ψ ⊢ θ) → (φ ⊢ θ) := by
+    intro φ
+    apply Der.derive_Trans
+
+  class has_struct_derives (Form : Type u) extends has_derives Form where
+    [memHyp : Membership Form Hyp]
+    inInsert : ∀ {φ : Form} {Φ : Hyp}, φ ∈ insert φ Φ
+    hyp : ∀ {Φ} {φ}, (φ ∈ Φ) → derives Φ φ
+    weak1 : ∀ {Φ} {φ} (ψ), derives Φ φ → derives (insert ψ Φ) φ
+
+  theorem derive_refl {Form : Type u} [Der : has_struct_derives Form] :
+    ∀ φ : Form, φ ⊢ φ := by
+    intro φ
+    apply Der.hyp
+    apply Der.inInsert
+
 end deduction_basic
-
-  

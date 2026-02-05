@@ -1,4 +1,5 @@
-import deduction.deduction_cartesian data.set.basic
+import deduction.deduction_cartesian
+import Mathlib.Data.Set.Insert
 open deduction_basic
 
 namespace PPC_defn
@@ -10,12 +11,12 @@ namespace PPC_defn
     | impl : PPC_Form → PPC_Form → PPC_Form
 
 
-    @[reducible] def PPC_Hyp : Type := set (PPC_Form)
+    @[reducible] def PPC_Hyp : Type := Set PPC_Form
 
-    instance : has_union PPC_Hyp := infer_instance
-    instance : has_mem PPC_Form PPC_Hyp := infer_instance
-    instance : has_insert PPC_Form PPC_Hyp := infer_instance
-    instance : has_emptyc PPC_Hyp := infer_instance
+    instance : Union PPC_Hyp := inferInstance
+    instance : Membership PPC_Form PPC_Hyp := inferInstance
+    instance : Insert PPC_Form PPC_Hyp := inferInstance
+    instance : EmptyCollection PPC_Hyp := inferInstance
 
 
     inductive PPC_derives : PPC_Hyp → PPC_Form → Prop 
@@ -50,68 +51,51 @@ namespace PPC_has_derives
     open deduction_cart
 
     instance PPC_hasHyp : has_Hyp PPC_Form :=
-      { Hyp := PPC_Hyp }
+      { Hyp := PPC_Hyp
+        emptyHyp := inferInstance
+        insertHyp := inferInstance }
 
-    instance PPC_singleton : has_singleton PPC_Form PPC_Hyp :=
-      deduction_basic.singleHyp
-    @[simp] 
-    lemma same_singles : ∀ φ : PPC_Form, 
-        PPC_has_derives.PPC_singleton.singleton φ = set.has_singleton.singleton φ :=
-    begin 
-      assume φ,
-      dsimp[PPC_has_derives.PPC_singleton,deduction_basic.singleHyp],
-      rw set.is_lawful_singleton.insert_emptyc_eq,
-    end
-
-    lemma single_union {Φ : PPC_Hyp} {φ : PPC_Form}
-        : insert φ Φ = {φ} ∪ Φ := by simp
-
-
-    instance PPC_Der : has_struct_derives PPC_Form :=
-    {
-      derives := PPC_derives,
-      derive_Trans := 
-        begin
-          assume Φ ψ θ hφψ hψθ,
-          have helper : PPC_derives Φ (PPC_Form.impl ψ θ),
-            apply impl_intro,
-            rw single_union,
-            apply weak,
-            exact hψθ,
-          apply impl_elim ψ,
-          exact helper,
-          exact hφψ,
-        end,
-      inInsert := set.mem_insert,
-      hyp := @hyp,
-      weak1 := 
-        begin
-          assume Φ φ ψ h,
-          rw single_union,
-          rw set.union_comm,
-          apply weak,
-          exact h,
-        end,
-    }
+    instance PPC_Der : has_struct_derives PPC_Form where
+      tohas_derives :=
+        { tohas_Hyp := PPC_hasHyp
+          derives := PPC_derives
+          derive_Trans := by
+            intro Φ ψ θ hφψ hψθ
+            have helper : PPC_derives Φ (PPC_Form.impl ψ θ) := by
+              apply impl_intro
+              have : PPC_derives (insert ψ (∅ : PPC_Hyp) ∪ Φ) θ := by
+                apply weak (Φ := insert ψ (∅ : PPC_Hyp)) (Ψ := Φ)
+                exact hψθ
+              simpa [Set.insert_union, Set.empty_union] using this
+            apply impl_elim ψ
+            · exact helper
+            · exact hφψ }
+      memHyp := (inferInstance : Membership PPC_Form PPC_Hyp)
+      inInsert := by
+        intro φ Φ
+        exact Set.mem_insert φ Φ
+      hyp := @hyp
+      weak1 := by
+        intro Φ φ ψ h
+        have : PPC_derives (Φ ∪ insert ψ (∅ : PPC_Hyp)) φ := by
+          apply weak (Φ := Φ) (Ψ := insert ψ (∅ : PPC_Hyp))
+          exact h
+        simpa [Set.union_insert, Set.union_empty] using this
 
     instance PPC_top : deduction_cart.has_ltop PPC_Form :=
-    {
-      top := PPC_Form.top,
-      truth := @truth,
-    }
+    { tohas_struct_derives := PPC_Der
+      top := PPC_Form.top
+      truth := @truth }
     instance PPC_and : deduction_cart.has_and PPC_Form :=
-    {
-      and := PPC_Form.and,
-      and_intro := @and_intro,
-      and_eliml := @and_eliml,
-      and_elimr := @and_elimr,
-
-    }
+    { tohas_ltop := PPC_top
+      and := PPC_Form.and
+      and_intro := @and_intro
+      and_eliml := @and_eliml
+      and_elimr := @and_elimr }
     instance PPC_impl : deduction_cart.has_impl PPC_Form :=
-    {
-      impl := PPC_Form.impl,
-      impl_intro := @impl_intro,
-      impl_elim := @impl_elim,
-    }
+    { tohas_and := PPC_and
+      impl := PPC_Form.impl
+      impl_intro := @impl_intro
+      impl_elim := @impl_elim }
 
 end PPC_has_derives

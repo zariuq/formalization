@@ -1,6 +1,8 @@
 # Formalization
 Formalization of Categorical Logic in the Lean proof assistant. For more details on the project, visit [the documentation website](https://lean-catLogic.github.io)
 
+**Lean 4.27.0 port:** this directory now builds with `lake` under Lean 4.27.0 + mathlib v4.27.0.
+
 ## Directories
 - [Category Theory](src/categoryTheory): Implementation of category-theoretic structures more suited to the purposes of categorical logic
 - [Deduction](src/deduction): Formal systems and proof calculi

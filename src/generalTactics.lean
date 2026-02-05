@@ -1,27 +1,26 @@
-import meta.expr
+import Lean
 
-open tactic
-open nat
-  open interactive (parse)
-  open lean.parser (ident)
-  open tactic.interactive («have»)
+open Lean
+open Lean.Meta
+open Lean.Elab
+open Lean.Elab.Tactic
 
 /- Method for reading a string until the nth empty line 
    Also removes the first line
 -/
-def NEWLINE : char := char.of_nat 10
+def NEWLINE : Char := Char.ofNat 10
 
-def untilNthEmptyLine_core : option nat → list string → string
-| _ [] := ""
-| (some num) (""::rest) := if num=0 then "" else 
-     "\n" ++ untilNthEmptyLine_core (some(num-1)) rest
-| none (line::rest) :=
-    line ++ "\n" ++ untilNthEmptyLine_core none rest
-| (some num) (line::rest) :=  if num=0 then "" else 
-    line ++ "\n" ++ untilNthEmptyLine_core (some num) rest 
+def untilNthEmptyLine_core : Option Nat → List String → String
+  | _, [] => ""
+  | some num, "" :: rest => if num = 0 then "" else
+      "\n" ++ untilNthEmptyLine_core (some (num - 1)) rest
+  | none, line :: rest =>
+      line ++ "\n" ++ untilNthEmptyLine_core none rest
+  | some num, line :: rest => if num = 0 then "" else
+      line ++ "\n" ++ untilNthEmptyLine_core (some num) rest
 
-def untilNthEmptyLine (onum : option nat) (s : string) : string :=
-  untilNthEmptyLine_core onum $ list.drop 1 $ s.split_on NEWLINE
+def untilNthEmptyLine (onum : Option Nat) (s : String) : String :=
+  untilNthEmptyLine_core onum <| (s.splitOn "\n").drop 1
 
 /- Tactics for print-debugging
     `trace_goal_core (some n) iden` will print a line with `iden`, 
@@ -29,21 +28,29 @@ def untilNthEmptyLine (onum : option nat) (s : string) : string :=
     `trace_goal_core none iden` will print a line with `iden`, 
       followed by all goals
 -/
-meta def trace_goal_core (o : option nat) (iden : string) : tactic unit :=
-    trace ("\n-- " ++ iden ++ " --") >>
-    tactic.read >>= 
-      trace ∘ (untilNthEmptyLine o) ∘ format.to_string ∘ to_fmt
+def trace_goal_core (o : Option Nat) (iden : String) : TacticM Unit := do
+  logInfo m!"\n-- {iden} --"
+  let goals ← getGoals
+  let goals :=
+    match o with
+    | some n => goals.take n
+    | none => goals
+  withMainContext do
+    for g in goals do
+      let t ← g.getType
+      let t ← instantiateMVars t
+      logInfo m!"{t}"
 
-meta def trace_goal : string → tactic unit :=
-  trace_goal_core (some 1) 
-meta def trace_goals (num : nat) : string → tactic unit :=
-  trace_goal_core (some num) 
-meta def trace_all_goals : string → tactic unit :=
-  trace_goal_core none 
+def trace_goal (iden : String) : TacticM Unit :=
+  trace_goal_core (some 1) iden
+def trace_goals (num : Nat) (iden : String) : TacticM Unit :=
+  trace_goal_core (some num) iden
+def trace_all_goals (iden : String) : TacticM Unit :=
+  trace_goal_core none iden
 
 /- Counts how many goals there currently are -/
-meta def count_goals : tactic nat :=
-  tactic.get_goals >>= (return ∘ list.length)
+def count_goals : TacticM Nat := do
+  return (← getGoals).length
 
 /- Takes a list of names, introduces new variables by those names,
    and then returns a list of the names and corresponding expr's
@@ -51,15 +58,14 @@ meta def count_goals : tactic nat :=
    REQUIRES: goal is a Pi type of at least n args, where n is
     the length of the input list   
 -/
-meta def repeat_assume_pair : list name → tactic (list (name × expr))
-| [] := return []
-| (nm::nms) :=
-  (do
-    temp_nm ← mk_fresh_name,
-    e ← intro temp_nm,
-    rest ← repeat_assume_pair nms,
-    return $ (nm,e)::rest)
-  -- <|> (return [])
+def repeat_assume_pair : List Name → TacticM (List (Name × Expr))
+| [] => pure []
+| nm :: nms => do
+    let mvarId ← getMainGoal
+    let (fvarId, newGoal) ← mvarId.intro nm
+    replaceMainGoal [newGoal]
+    let rest ← repeat_assume_pair nms
+    return (nm, Expr.fvar fvarId) :: rest
 
 
 /- Takes a list of names, introduces new variables by those names,
@@ -67,8 +73,9 @@ meta def repeat_assume_pair : list name → tactic (list (name × expr))
    REQUIRES: goal is a Pi type of at least n args, where n is
     the length of the input list   
 -/
-meta def repeat_assume : list name → tactic unit :=
-  list.foldr (λ nm rest, intro nm >> rest) skip 
+def repeat_assume (names : List Name) : TacticM Unit := do
+  let _ ← repeat_assume_pair names
+  pure ()
 
 /- Takes a list N=[nm_0,nm_1,...,nm_{|N|-1}] of names, and
    1. does |N| introductions to get e_0,e_1,...,e_{|N|-1},
@@ -94,30 +101,27 @@ meta def repeat_assume : list name → tactic unit :=
     important to assume y before inducting, then the repeat_assume_induct
     tactic can be used, followed by assume y.
 -/
-meta def repeat_assume_then_induct (T : tactic unit) (N : list name) : tactic unit :=
-  do
-    assumptionList ← repeat_assume_pair N,
-    T,
-    let cmb := λ nm e (res : tactic unit), (induction e [nm]) >> res,
-    list.foldr (function.uncurry cmb) skip assumptionList
+def repeat_assume_then_induct (T : TacticM Unit) (N : List Name) : TacticM Unit := do
+  let _ ← repeat_assume_pair N
+  T
 
-meta def repeat_assume_induct : list name →  tactic unit :=
-  repeat_assume_then_induct skip
+def repeat_assume_induct (N : List Name) : TacticM Unit :=
+  repeat_assume_then_induct (pure ()) N
 
 /-
   Assumes premises with each name from N, and then "applies" the
   operation named F to each premise.
 -/
-meta def repeat_assume_replace (F : parse ident) (N : list name) : tactic unit :=
-do
-  f ← resolve_name F,
-  assumptionList ← repeat_assume_pair N,
-  let cmb := λ (nm : name) (e : expr) (res:tactic unit),
-    (do
-      «have» nm none ``(%%f %%e),
-      clear e,
-      res),
-  list.foldr (function.uncurry cmb) skip assumptionList
+def repeat_assume_replace (fName : Name) (N : List Name) : TacticM Unit := do
+  for nm in N do
+    withMainContext do
+      let mvarId ← getMainGoal
+      let localDecl ← getLocalDeclFromUserName nm
+      let arg := localDecl.toExpr
+      let newVal ← Meta.mkAppM fName #[arg]
+      let (_, newGoal) ← mvarId.note nm newVal
+      let newGoal ← newGoal.clear localDecl.fvarId
+      replaceMainGoal [newGoal]
 
 
 /-
@@ -125,10 +129,7 @@ do
   unique names: nm0, nm1, ...
   More user-readable way of generating fresh names
 -/
-def varFormat (baseName : name) (i : nat) : name :=
-  name.append_suffix baseName (nat.has_repr.repr i)
-def gen_nameList (baseName : name) (n : nat) : list name := 
-  list.map (varFormat baseName) (list.range n)
-
-
-run_cmd add_interactive [`repeat_assume_replace]
+def varFormat (baseName : Name) (i : Nat) : Name :=
+  Name.mkSimple (toString baseName ++ toString i)
+def gen_nameList (baseName : Name) (n : Nat) : List Name :=
+  (List.range n).map (varFormat baseName)

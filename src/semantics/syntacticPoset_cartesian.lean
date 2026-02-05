@@ -1,4 +1,8 @@
-import semantics.syntacticPoset deduction.deduction_cartesian deduction.PPC_natDeduct deduction.MPPC_natDeduct
+import semantics.syntacticPoset
+import deduction.deduction_cartesian
+import deduction.PPC_natDeduct
+import deduction.MPPC_natDeduct
+import Mathlib.Order.Notation
 
 namespace synPoset_cartesian
 
@@ -10,108 +14,104 @@ open deduction_monadic
 variable {Form : Type}
 
   -- ⊤ : Form_eq
-  instance [Der : has_ltop Form] : has_top (Form _eq) := ⟨ ⦃Der.top⦄ ⟩ 
+  instance [Der : has_ltop Form] : Top (Form _eq) := ⟨⦃Der.top⦄⟩
 
-  lemma and_liftable1 [Der : has_and Form] : 
-    ∀ φ ψ ψ' : Form, (ψ ⊣⊢ ψ') → ⦃φ & ψ⦄ = ⦃φ & ψ'⦄ :=
-  begin
-    assume φ ψ ψ' h,
-    apply quotient.sound,
-    cases h with ψψ' ψ'ψ,
-    split,
-    -- Proof that φ&ψ ⊢ φ&ψ'
-      apply Der.and_intro,
-      apply cart_x.and_eliml1,
-      apply derive_trans,
-      apply cart_x.and_elimr1,
-      exact ψψ',
-    -- Proof that φ&ψ' ⊢ φ&ψ
-      apply Der.and_intro,
-      apply cart_x.and_eliml1,
-      apply derive_trans,
-      apply cart_x.and_elimr1,
-      exact ψ'ψ,
-  end
+  lemma and_liftable1 [Der : has_and Form] :
+    ∀ φ ψ ψ' : Form, (ψ ⊣⊢ ψ') → ⦃φ & ψ⦄ = ⦃φ & ψ'⦄ := by
+    intro φ ψ ψ' h
+    apply Quotient.sound
+    cases h with
+    | intro ψψ' ψ'ψ =>
+      constructor
+      · apply Der.and_intro
+        · apply cart_x.and_eliml1
+        · apply derive_trans
+          · apply cart_x.and_elimr1
+          · exact ψψ'
+      · apply Der.and_intro
+        · apply cart_x.and_eliml1
+        · apply derive_trans
+          · apply cart_x.and_elimr1
+          · exact ψ'ψ
 
   lemma and_liftable2 [Der : has_and Form] :
-    ∀ φ φ' ψ : Form, (φ ⊣⊢ φ') → ⦃φ & ψ⦄ = ⦃φ' & ψ⦄ := 
-  begin
-      assume φ φ' ψ h,
-      apply quotient.sound,
-      cases h with φφ' φ'φ,
-      split,
-      -- Proof that φ&ψ ⊢ φ'&ψ
-        apply Der.and_intro,
-        apply derive_trans φ,
-        apply cart_x.and_eliml1,
-        exact φφ',
-        apply cart_x.and_elimr1,
-      -- Proof that φ'&ψ ⊢ φ&ψ
-        apply Der.and_intro,
-        apply derive_trans φ',
-        apply cart_x.and_eliml1,
-        exact φ'φ,
-        apply cart_x.and_elimr1,
-  end
+    ∀ φ φ' ψ : Form, (φ ⊣⊢ φ') → ⦃φ & ψ⦄ = ⦃φ' & ψ⦄ := by
+      intro φ φ' ψ h
+      apply Quotient.sound
+      cases h with
+      | intro φφ' φ'φ =>
+        constructor
+        · apply Der.and_intro
+          · apply derive_trans φ
+            · apply cart_x.and_eliml1
+            · exact φφ'
+          · apply cart_x.and_elimr1
+        · apply Der.and_intro
+          · apply derive_trans φ'
+            · apply cart_x.and_eliml1
+            · exact φ'φ
+          · apply cart_x.and_elimr1
 
   def and_eq [Der : has_and Form] : Form _eq → Form _eq → Form _eq :=
-    quot.lift₂ (λ φ ψ, ⦃φ & ψ⦄) (@and_liftable1 Form Der) and_liftable2 
+    fun x y =>
+      Quotient.liftOn₂ x y (fun φ ψ => ⦃φ & ψ⦄) (by
+        intro a b a' b' ha hb
+        exact (and_liftable2 (φ := a) (φ' := a') (ψ := b) ha).trans
+          (and_liftable1 (φ := a') (ψ := b) (ψ' := b') hb))
 
   -- ⊓ : Form_eq → Form_eq → Form_eq
-  instance [Der : has_and Form] : has_inf (Form _eq) := ⟨ and_eq ⟩ 
+  instance [Der : has_and Form] : Min (Form _eq) := ⟨and_eq⟩
 
 
 
-  lemma impl_liftable1 [Der : has_impl Form] : 
-    ∀ φ ψ ψ' : Form, (ψ ⊣⊢ ψ') → ⦃φ ⊃ ψ⦄ = ⦃φ ⊃ ψ'⦄ :=
-  begin 
-      assume φ ψ ψ' h,
-      apply quotient.sound,
-      cases h with ψψ' ψ'ψ,
-      constructor,
-      -- Proof that φ ⊃ ψ ⊢ φ ⊃ ψ'
-        apply Der.impl_intro,
-        apply Der.derive_Trans ψ,
-        apply cart_x.and_internal,
-        exact cart_x.modus_ponens,
-        exact ψψ',
-      -- Proof that φ ⊃ ψ' ⊢ φ ⊃ ψ
-        apply Der.impl_intro,
-        apply Der.derive_Trans ψ',
-        apply cart_x.and_internal,
-        exact cart_x.modus_ponens,
-        exact ψ'ψ,
-  end 
+  lemma impl_liftable1 [Der : has_impl Form] :
+    ∀ φ ψ ψ' : Form, (ψ ⊣⊢ ψ') → ⦃Der.impl φ ψ⦄ = ⦃Der.impl φ ψ'⦄ := by
+      intro φ ψ ψ' h
+      apply Quotient.sound
+      cases h with
+      | intro ψψ' ψ'ψ =>
+        constructor
+        · apply Der.impl_intro
+          apply Der.derive_Trans ψ
+          · apply cart_x.and_internal
+            exact cart_x.modus_ponens
+          · exact ψψ'
+        · apply Der.impl_intro
+          apply Der.derive_Trans ψ'
+          · apply cart_x.and_internal
+            exact cart_x.modus_ponens
+          · exact ψ'ψ
 
-  lemma impl_liftable2 [Der : has_impl Form] : 
-    ∀ φ φ' ψ : Form, (φ ⊣⊢ φ') → ⦃φ ⊃ ψ⦄ = ⦃φ' ⊃ ψ⦄ := 
-  begin 
-      assume φ φ' ψ h,
-      apply quotient.sound,
-      cases h with φφ' φ'φ,
-      constructor,
-      -- Proof that φ ⊃ ψ ⊢ φ' ⊃ ψ
-        apply Der.impl_intro,
-        apply Der.impl_elim φ,
-        apply Der.weak1,
-        apply derive_refl,
-        apply cart_x.insert_trans,
-        exact φ'φ,
-      -- Proof that φ' ⊃ ψ ⊢ φ ⊃ ψ
-        apply Der.impl_intro,
-        apply Der.impl_elim φ',
-        apply Der.weak1,
-        apply derive_refl,
-        apply cart_x.insert_trans,
-        exact φφ',
-  end 
+  lemma impl_liftable2 [Der : has_impl Form] :
+    ∀ φ φ' ψ : Form, (φ ⊣⊢ φ') → ⦃Der.impl φ ψ⦄ = ⦃Der.impl φ' ψ⦄ := by
+      intro φ φ' ψ h
+      apply Quotient.sound
+      cases h with
+      | intro φφ' φ'φ =>
+        constructor
+        · apply Der.impl_intro
+          apply Der.impl_elim φ
+          · apply Der.weak1
+            apply derive_refl
+          · apply cart_x.insert_trans
+            exact φ'φ
+        · apply Der.impl_intro
+          apply Der.impl_elim φ'
+          · apply Der.weak1
+            apply derive_refl
+          · apply cart_x.insert_trans
+            exact φφ'
 
 
   def impl_eq [Der : has_impl Form] : Form _eq → Form _eq → Form _eq :=
-    quot.lift₂ (λ φ ψ, ⦃φ ⊃ ψ⦄) (@impl_liftable1 Form Der) impl_liftable2 
+    fun x y =>
+      Quotient.liftOn₂ x y (fun φ ψ => ⦃Der.impl φ ψ⦄) (by
+        intro a b a' b' ha hb
+        exact (impl_liftable2 (φ := a) (φ' := a') (ψ := b) ha).trans
+          (impl_liftable1 (φ := a') (ψ := b) (ψ' := b') hb))
 
   -- ⇨ : Form_eq → Form_eq → Form_eq
-  instance [Der : has_impl Form] : has_himp (Form _eq) := ⟨ impl_eq ⟩ 
+  instance [Der : has_impl Form] : HImp (Form _eq) := ⟨impl_eq⟩
 
 end synPoset_cartesian
 
